@@ -52,18 +52,42 @@ Run `portfolio_manager.py summary` to load profile from `memory/finance-profile.
 - Auto-trial key per query, no persistence
 - Docs: https://docs.tickdb.ai
 
-### Backup: Finnhub
-- Coverage: 美股、港股、A股、外汇、加密货币
-- Free tier: 60 calls/min, sufficient for daily advice
+### Market Data Sources (Fallback Chain)
+
+| Priority | Source | Coverage | Free Tier | Key Required |
+|----------|--------|----------|-----------|-------------|
+| 🥇 Primary | **TickDB** | 外汇、贵金属、指数、美股、港股、A股、加密货币 | Trial key (auto, per-query) | No |
+| 🥈 Backup 1 | **Finnhub** | 美股、港股、A股、外汇、加密货币 | 60 calls/min | Yes |
+| 🥉 Backup 2 | **Twelve Data** | 美股、港股、A股、外汇、加密货币、ETF | 800 calls/day | Yes |
+| 🌀 Fallback | **Yahoo Finance (yfinance)** | 美股、港股、加密货币、ETF | Unlimited | No |
+
+**Fallback rules**:
+- TickDB error 1001/3001/3002/3006 → Finnhub
+- Finnhub rate limit or error → Twelve Data
+- All else fails → yfinance (Python `yfinance` library)
+
+### Data Source Details
+
+#### TickDB (Primary)
+- Docs: https://docs.tickdb.ai
+- Auto-trial key: `GET https://tickdb.ai/api/public/claw-keys`
+- No persistence, fetched per query
+
+#### Finnhub (Backup 1)
 - Sign up: https://finnhub.io (free API key)
-- Key endpoint: `GET https://finnhub.io/api/v1/quote?symbol={SYMBOL}&token={API_KEY}`
+- Key storage: `memory/finnhub-key.json`
+- Symbol format: `AAPL.US`, `700.HK`, `BTCUSDT`
 
-### Data Fallback Order
-1. TickDB (primary, all Chinese-market products)
-2. Finnhub (backup, mainly US/HK stocks)
-3. Yahoo Finance / yfinance (last resort, completely free)
+#### Twelve Data (Backup 2)
+- Sign up: https://twelvedata.com (free API key)
+- Key storage: `memory/twelvedata-key.json`
+- Symbol format: `AAPL`, `700.HK`, `BTC/USD`, `XAU/USD`
+- Supports A-share: `000001.SZ`, `600519.SH`
 
-**Usage**: If TickDB returns error code 1001/3001/3002/3006, switch to Finnhub for the same symbol.
+#### Yahoo Finance / yfinance (Final Fallback)
+- No API key needed, Python library
+- Install: `pip install yfinance`
+- Symbol format: `AAPL`, `700.HK`, `BTC-USD`, `GC=F` (gold)
 
 ### Step 2: Real-time Market Data
 
@@ -72,7 +96,11 @@ Use `tickdb-market-data` skill to fetch real-time quotes for user holdings:
 - Crypto: support/resistance, 24h volatility
 - Forex/Precious metals: XAUUSD (gold), USDJPY
 
-**If TickDB fails**, use Finnhub with the user's API key (stored in `memory/finnhub-key.json` or provided in conversation).
+**Fallback flow**:
+1. Try TickDB → if error, try next
+2. Try Finnhub (if key available in `memory/finnhub-key.json`)
+3. Try Twelve Data (if key available in `memory/twelvedata-key.json`)
+4. Use yfinance as last resort
 
 ### Finnhub API Quick Reference
 
@@ -86,6 +114,41 @@ Use `tickdb-market-data` skill to fetch real-time quotes for user holdings:
 **Symbol format**: AAPL.US, 700.HK, BTCUSDT (crypto), USDCNH (forex)
 
 **Example**: `curl "https://finnhub.io/api/v1/quote?symbol=700.HK&token=$FINNHUB_KEY"`
+
+### Twelve Data API Quick Reference
+
+| Intent | Endpoint |
+|--------|----------|
+| Real-time quote | `/v1/quote?symbol={SYMBOL}` |
+| Price | `/v1/price?symbol={SYMBOL}` |
+| Candlestick (K线) | `/v1/time_series?symbol={SYMBOL}&interval=1day&count=30` |
+| Currency pair | `/v1/price?symbol=ETH/USD` |
+
+**Symbol format**: `AAPL`, `700.HK`, `BTC/USD`, `XAU/USD`, `000001.SZ`, `600519.SH`
+
+**Example**: `curl "https://api.twelvedata.com/v1/price?symbol=700.HK&apikey=$TWELVEDATA_KEY"`
+
+### Yahoo Finance / yfinance (Final Fallback)
+
+```python
+import yfinance as yf
+
+# 美股
+aapl = yf.Ticker("AAPL")
+print(aapl.info['regularMarketPrice'])
+
+# 港股
+hk_700 = yf.Ticker("0700.HK")
+
+# 黄金
+gold = yf.Ticker("GC=F")
+
+# 加密货币
+btc = yf.Ticker("BTC-USD")
+
+# K线
+data = yf.download("AAPL", period="1mo", interval="1d")
+```
 
 ### Step 3: Investment History Learning
 
