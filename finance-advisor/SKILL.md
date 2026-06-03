@@ -45,12 +45,47 @@ Run `portfolio_manager.py summary` to load profile from `memory/finance-profile.
 
 **Storage**: `memory/finance-profile.json`
 
+## Market Data Sources
+
+### Primary: TickDB (tickdb-market-data skill)
+- Coverage: 外汇、贵金属、指数、美股、港股、A股、加密货币
+- Auto-trial key per query, no persistence
+- Docs: https://docs.tickdb.ai
+
+### Backup: Finnhub
+- Coverage: 美股、港股、A股、外汇、加密货币
+- Free tier: 60 calls/min, sufficient for daily advice
+- Sign up: https://finnhub.io (free API key)
+- Key endpoint: `GET https://finnhub.io/api/v1/quote?symbol={SYMBOL}&token={API_KEY}`
+
+### Data Fallback Order
+1. TickDB (primary, all Chinese-market products)
+2. Finnhub (backup, mainly US/HK stocks)
+3. Yahoo Finance / yfinance (last resort, completely free)
+
+**Usage**: If TickDB returns error code 1001/3001/3002/3006, switch to Finnhub for the same symbol.
+
 ### Step 2: Real-time Market Data
 
 Use `tickdb-market-data` skill to fetch real-time quotes for user holdings:
 - Stocks/ETFs: price, 24h change, volume
 - Crypto: support/resistance, 24h volatility
 - Forex/Precious metals: XAUUSD (gold), USDJPY
+
+**If TickDB fails**, use Finnhub with the user's API key (stored in `memory/finnhub-key.json` or provided in conversation).
+
+### Finnhub API Quick Reference
+
+| Intent | Endpoint |
+|--------|----------|
+| Real-time quote | `/v1/quote?symbol={SYMBOL}` |
+| Candlestick (K线) | `/v1/stock/candle?symbol={SYMBOL}&resolution=D&count=30` |
+| Company info | `/v1/stock/profile2?symbol={SYMBOL}` |
+| Market status | `/v1/market-status?exchange=US` |
+
+**Symbol format**: AAPL.US, 700.HK, BTCUSDT (crypto), USDCNH (forex)
+
+**Example**: `curl "https://finnhub.io/api/v1/quote?symbol=700.HK&token=$FINNHUB_KEY"`
 
 ### Step 3: Investment History Learning
 
